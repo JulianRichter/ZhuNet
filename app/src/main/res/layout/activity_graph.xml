@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- Layout to divide top bar and Graph View: -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context="richter.julian.zhunet.GraphActivity">
+
+    <!-- Layout to hold three Buttons at the top.: -->
+    <LinearLayout
+        style="?android:attr/buttonBarButtonStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="3" >
+
+        <!-- Settings Button: -->
+        <Button
+            android:id="@+id/btn_settings"
+            style="?android:buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/graph_btn_settings" />
+
+        <!-- Reset Button: -->
+        <Button
+            android:id="@+id/btn_reset"
+            style="?android:buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/graph_btn_reset" />
+
+        <!-- Calendar Button: -->
+        <Button
+            android:id="@+id/btn_calendar"
+            style="?android:buttonBarButtonStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/graph_btn_calendar" />
+
+    </LinearLayout>
+
+    <!-- Graph View filling rest of the screen. -->
+    <com.jjoe64.graphview.GraphView
+        android:id="@+id/graph"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+</LinearLayout>
