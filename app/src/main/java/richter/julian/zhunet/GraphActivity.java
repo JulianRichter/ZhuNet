@@ -1949,6 +1949,11 @@ public class GraphActivity extends AppCompatActivity {
         Calendar alarm_time = Calendar.getInstance();
         alarm_time.set(Calendar.HOUR_OF_DAY, 6);
         alarm_time.set(Calendar.MINUTE, 0);
+        alarm_time.set(Calendar.SECOND, 0);
+        // App opened after 6:00, show Notification tomorrow again.
+        if(alarm_time.getTimeInMillis() < Calendar.getInstance().getTimeInMillis()) {
+            alarm_time.add(Calendar.DAY_OF_MONTH, 1);
+        }
 
         // Intent to start the Notification Receiver.
         intent_alarm = new Intent(GraphActivity.this, GraphNotificationReceiver.class);
