@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Color;
+import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
@@ -268,79 +269,53 @@ public class GraphActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Finds a firstHighTemperature by comparing the current one with the highest from the
-     * last 6 temperatures.
-     * Starts the temperature analysis.
-     */
     private void analyseRecords() {
-        GraphRecord[] previous_records = new GraphRecord[6];
-        GraphRecord   current_record;
-        int records_set;
-        int position;
         double highest_temperature;
-        boolean[] highest_temperature_found = new boolean[4];
+        GraphRecord   current_record;
+        GraphRecord[] previous_records = new GraphRecord[6];
+        ArrayList<GraphRecord> array_not_ignored = new ArrayList<>();;
 
-        highest_temperature_found[0] = false;
-        highest_temperature_found[1] = false;
-        highest_temperature_found[2] = false;
-        highest_temperature_found[3] = false;
-        records_set = 0;
-        position = 0;
-
-        // Save first 6 not ignored Records.
-        while(records_set < 6) {
-            if (position < array_all.size() - 1) {
-                previous_records[records_set] = array_all.get(position);
-                records_set++;
-                position = getNextNotIgnoredPosition(position);
-            }
-            else {
-                break;
+        // Fill array with not ignored records:
+        for (int i = 0; i < array_all.size(); i++) {
+            if (!array_all.get(i).isIgnored()) {
+                array_not_ignored.add(array_all.get(i));
             }
         }
 
-        // Start analysing if 6 Records where saved.
-        if(6 == records_set) {
+        // Start analysing if there are at least 7 Records:
+        if (array_not_ignored.size() > 6) {
 
-            // Compare current value with previous 6 till analysis is done.
-            for (int i = 6; i < array_all.size(); i++) {
+            previous_records[0] = array_not_ignored.get(0);
+            previous_records[1] = array_not_ignored.get(1);
+            previous_records[2] = array_not_ignored.get(2);
+            previous_records[3] = array_not_ignored.get(3);
+            previous_records[4] = array_not_ignored.get(4);
+            previous_records[5] = array_not_ignored.get(5);
 
-                current_record = array_all.get(i);
+            for (int i = 6; i < array_not_ignored.size(); i++) {
+                // Get highest_temperature from last 6 Records:
+                highest_temperature = Math.max(previous_records[0].getTemperature(), previous_records[1].getTemperature());
+                highest_temperature = Math.max(previous_records[2].getTemperature(), highest_temperature);
+                highest_temperature = Math.max(previous_records[3].getTemperature(), highest_temperature);
+                highest_temperature = Math.max(previous_records[4].getTemperature(), highest_temperature);
+                highest_temperature = Math.max(previous_records[5].getTemperature(), highest_temperature);
 
-                // Skip current_record if it should be ignored.
-                if (!current_record.isIgnored()) {
+                // Check if current temperature is higher than last highest_temperature found:
+                current_record = array_not_ignored.get(i);
 
-                    // Get highest_temperature from last 6 valid Records.
-                    highest_temperature = Math.max(previous_records[0].getTemperature(), previous_records[1].getTemperature());
-                    highest_temperature = Math.max(previous_records[2].getTemperature(), highest_temperature);
-                    highest_temperature = Math.max(previous_records[3].getTemperature(), highest_temperature);
-                    highest_temperature = Math.max(previous_records[4].getTemperature(), highest_temperature);
-                    highest_temperature = Math.max(previous_records[5].getTemperature(), highest_temperature);
-                    // First higher temperature.
-//                Log.i(TAG, "------------------------------");
-//                Log.i(TAG, "day        : " + array_all.get(i).getDay());
-//                Log.i(TAG, "temperature: " + highest_temperature);
-                    if (highest_temperature < current_record.getTemperature() && !current_record.isIgnored()) {
-                        /* hhH  */      highest_temperature_found[0] =  firstAnalysis(i, highest_temperature, highest_temperature_found);
-                        /* hhhh */      highest_temperature_found[1] = secondAnalysis(i, highest_temperature, highest_temperature_found);
-                        /* hLHh */      highest_temperature_found[2] =  thirdAnalysis(i, highest_temperature, highest_temperature_found);
-                        /* hhLH */      highest_temperature_found[3] = fourthAnalysis(i, highest_temperature, highest_temperature_found);
+                if (highest_temperature < current_record.getTemperature()) {
+                    if (analysisDone(array_not_ignored, i, highest_temperature)) {
+                        break;
                     }
-
-                    // Update previous 6 temperatures for the next item.
-                    previous_records[0] = previous_records[1];
-                    previous_records[1] = previous_records[2];
-                    previous_records[2] = previous_records[3];
-                    previous_records[3] = previous_records[4];
-                    previous_records[4] = previous_records[5];
-                    previous_records[5] = current_record;
-
                 }
+                // Update previous 6 temperatures for the next item.
+                previous_records[0] = previous_records[1];
+                previous_records[1] = previous_records[2];
+                previous_records[2] = previous_records[3];
+                previous_records[3] = previous_records[4];
+                previous_records[4] = previous_records[5];
+                previous_records[5] = current_record;
             }
-//            Log.i(TAG, "#######################");
-//            Log.i(TAG, "##  Done Analysing.  ##");
-//            Log.i(TAG, "#######################");
         }
         // First 6 temperatures cannot be analysed.
         else {
@@ -349,461 +324,207 @@ public class GraphActivity extends AppCompatActivity {
         }
         // Set changes to arrays depending on the set yellow array.
         setAnalysisChanges();
+
     }
 
-    /**
-     * Analyses the temperature. Looks for hhH.
-     *
-     * @param position                      Position in array at which first item was found. ( < 6 ) 
-     * @param highest_temperature           highest_temperature found for the first item.
-     * @param highest_temperature_found     True if any Analysis found a possible temperature
-     *                                      to complete analysis.
-     * @return                              True to block others if analysis did not fail yet or is complete.
-     *                                      False if failed to reset.
-     */
-    private boolean firstAnalysis (int position, double highest_temperature, boolean[] highest_temperature_found) {
-        GraphRecord start;
+    private boolean analysisDone(ArrayList<GraphRecord> array_not_ignored, int i, double highest_temperature) {
+        GraphRecord previous;
         GraphRecord first;
         GraphRecord second;
         GraphRecord third;
+        GraphRecord fourth;
 
-        // Only check if others did not find the first possible firstHighTemperaturePosition.
-        if (!highest_temperature_found[1] && !highest_temperature_found[2] && !highest_temperature_found[3]) {
-            start = array_all.get(position - 1);
-            first = array_all.get(position);
-            position = getNextNotIgnoredPosition(position);
-            // Only check if itself found the first possible firstHighTemperaturePosition.
-            if (!highest_temperature_found[0] || first == array_yellow.get(0)) {
-                if (position < array_all.size()) {
-                    second = array_all.get(position); // nextUnIgnoredRecord(position);
-                    position = getNextNotIgnoredPosition(position);
-                    if (highest_temperature < second.getTemperature()) {
-                        if (position < array_all.size()) {
-                            third = array_all.get(position);
-                            // Calculate 0.20 for accuracy with "(highest_temperature * 5 + 1) / 5". 36.00+0.20=36.00.2!
-                            if((highest_temperature * 5 + 1) / 5 <= third.getTemperature()) {
-//                                Log.i(TAG, "h h H  : Third at least 0.20 higher. Done.");
+        previous = array_not_ignored.get(i - 1);
+        first    = array_not_ignored.get(i);
+
+        if (i++ < array_not_ignored.size() - 1) {
+            // h?..
+            second = array_not_ignored.get(i);
+            if (highest_temperature < second.getTemperature()) {
+                // hh..
+                if (i++ < array_not_ignored.size() - 1) {
+                    // hh?.
+                    third = array_not_ignored.get(i);
+                    if ( (highest_temperature * 5 + 1) / 5 <= third.getTemperature() ) {
+                        // hhH. - Done
+                        Log.i(TAG, "(h h H .) - Done!");
+                        array_yellow.clear();
+                        array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                        array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                        array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                        array_yellow.add(new GraphRecord(third.getDay()   , third.getTemperature()));
+                        array_guideline.clear();
+                        array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
+                        return true;
+                    }
+                    else {
+                        if (highest_temperature < third.getTemperature()) {
+                            // hhh.
+                            if (i++ < array_not_ignored.size() - 1) {
+                                // hhh?
+                                fourth = array_not_ignored.get(i);
+                                if (highest_temperature < fourth.getTemperature()) {
+                                    // hhhh - Done
+                                    Log.i(TAG, "(h h h h) - Done!");
+                                    array_yellow.clear();
+                                    array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                                    array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                                    array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                                    array_yellow.add(new GraphRecord(third.getDay()   , third.getTemperature()));
+                                    array_yellow.add(new GraphRecord(fourth.getDay()  , fourth.getTemperature()));
+                                    array_guideline.clear();
+                                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
+                                    return true;
+                                }
+                                else {
+                                    // hhhL - Reset
+                                    Log.i(TAG, "(h h h L) - Reset!");
+                                    array_yellow.clear();
+                                    array_guideline.clear();
+                                    return false;
+                                }
+                            }
+                            else {
+                                // hhhx - No More
+                                Log.i(TAG, "(h h h x) - No more Records!");
                                 array_yellow.clear();
-                                array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                                array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                                array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                                array_yellow.add(new GraphRecord(third.getDay(), third.getTemperature()));
+                                array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                                array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                                array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                                array_yellow.add(new GraphRecord(third.getDay()   , third.getTemperature()));
                                 array_guideline.clear();
                                 array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-//                                showToastMessage("Done. (h h H)");
-                                Log.i(TAG, "Done. (h h H)");
+                                return true;
+                            }
+                        }
+                        else {
+                            // hhL.
+                            if (i++ < array_not_ignored.size() - 1) {
+                                // hhL? (? Has to be at least 0.20 higher)
+                                fourth = array_not_ignored.get(i);
+                                if ( (highest_temperature * 5 + 1) / 5 <= fourth.getTemperature() ) {
+                                    // hhLH - Done
+                                    Log.i(TAG, "(h h L H) - Done!");
+                                    array_yellow.clear();
+                                    array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                                    array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                                    array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                                    array_yellow.add(new GraphRecord(third.getDay()   , third.getTemperature()));
+                                    array_yellow.add(new GraphRecord(fourth.getDay()  , fourth.getTemperature()));
+                                    array_guideline.clear();
+                                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
+                                    return true;
+                                }
+                                else {
+                                    // hhLL - Reset
+                                    Log.i(TAG, "(h h L L) - Reset! (Not 0.20 higher)");
+                                    array_yellow.clear();
+                                    array_guideline.clear();
+                                    return false;
+                                }
+                            }
+                            else {
+                                // hhL. - No More
+                                Log.i(TAG, "(h h L .) - No more Records!");
+                                array_yellow.clear();
+                                array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                                array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                                array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                                array_yellow.add(new GraphRecord(third.getDay()   , third.getTemperature()));
+                                array_guideline.clear();
+                                array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
+                                return true;
+                            }
+                        }
+                    }
+                }
+                else {
+                    // hhx. - No More
+                    Log.i(TAG, "(h h x .) - No more Records!");
+                    array_yellow.clear();
+                    array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                    array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                    array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                    array_guideline.clear();
+                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
+                    return true;
+                }
+            }
+            else {
+                // hL..
+                if (i++ < array_not_ignored.size() - 1) {
+                    // hL?. (? Has to be at least 0.20 higher)
+                    third = array_not_ignored.get(i);
+                    if ( (highest_temperature * 5 + 1) / 5 <= third.getTemperature() ) {
+                        // hLH.
+                        if (i++ < array_not_ignored.size() - 1) {
+                            // hLH?
+                            fourth = array_not_ignored.get(i);
+                            if (highest_temperature < fourth.getTemperature()) {
+                                // hLHh - Done
+                                Log.i(TAG, "(h L H h) - Done!");
+                                array_yellow.clear();
+                                array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                                array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                                array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                                array_yellow.add(new GraphRecord(third.getDay()   , third.getTemperature()));
+                                array_yellow.add(new GraphRecord(fourth.getDay()  , fourth.getTemperature()));
+                                array_guideline.clear();
+                                array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
                                 return true;
                             }
                             else {
-//                                Log.i(TAG, "h h H  : Third not 0.20 higher. Reset.");
+                                // hLHL - Reset
+                                Log.i(TAG, "(h L H L) - Reset!");
                                 array_yellow.clear();
                                 array_guideline.clear();
                                 return false;
                             }
                         }
                         else {
-//                            Log.i(TAG, "h h H  : Second higher but no more data.");
+                            // hLHx - No more
+                            Log.i(TAG, "(h L H x) - No more Records!");
                             array_yellow.clear();
-                            array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                            array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                            array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
+                            array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                            array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                            array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
+                            array_yellow.add(new GraphRecord(third.getDay()   , third.getTemperature()));
                             array_guideline.clear();
                             array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
                             return true;
                         }
                     }
                     else {
-//                        Log.i(TAG, "h h H  : Second lower. Reset.");
+                        // hLL. - Reset
+                        Log.i(TAG, "(h L L .) - Reset! (Not 0.20 higher)");
                         array_yellow.clear();
                         array_guideline.clear();
                         return false;
                     }
                 }
                 else {
-//                    Log.i(TAG, "h h H  : First higher but no more data.");
+                    // hLx. - No more
+                    Log.i(TAG, "(h L x .) - No more Records!");
                     array_yellow.clear();
-                    array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                    array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
+                    array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+                    array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+                    array_yellow.add(new GraphRecord(second.getDay()  , second.getTemperature()));
                     array_guideline.clear();
                     array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
                     return true;
                 }
             }
-            else {
-//                Log.i(TAG, "h h H  : Blocked by itself.");
-                return true;
-            }
         }
         else {
-//            Log.i(TAG, "h h H  : Blocked by others.");
-            return false;
+            // hx.. - No more
+            Log.i(TAG, "(h x . .) - No more Records!");
+            array_yellow.clear();
+            array_yellow.add(new GraphRecord(previous.getDay(), previous.getTemperature()));
+            array_yellow.add(new GraphRecord(first.getDay()   , first.getTemperature()));
+            array_guideline.clear();
+            array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
+            return true;
         }
-    }
-
-    /**
-     * Analyses the temperature. Looks for hhhh.
-     *
-     * @param position                      Position in array at which first item was found. ( < 6 ) 
-     * @param highest_temperature           highest_temperature found for the first item.
-     * @param highest_temperature_found     True if any Analysis found a possible temperature
-     *                                      to complete analysis.
-     * @return                              True to block others if analysis did not fail yet or is complete.
-     *                                      False if failed to reset.
-     */
-    private boolean secondAnalysis(int position, double highest_temperature, boolean[] highest_temperature_found) {
-        GraphRecord start;
-        GraphRecord first;
-        GraphRecord second;
-        GraphRecord third;
-        GraphRecord fourth;
-
-        // Only check if others did not find the first possible firstHighTemperaturePosition.
-        if (!highest_temperature_found[0] && !highest_temperature_found[2] && !highest_temperature_found[3]) {
-            start = array_all.get(position - 1);
-            first = array_all.get(position);
-            position = getNextNotIgnoredPosition(position);
-            // Only check if itself found the first possible firstHighTemperaturePosition.
-            if (!highest_temperature_found[1] || first == array_yellow.get(0)) {
-                if (position < array_all.size()) {
-                    second = array_all.get(position);
-                    position = getNextNotIgnoredPosition(position);
-                    if (highest_temperature < second.getTemperature()) {
-                        if (position < array_all.size()) {
-                            third = array_all.get(position);
-                            position = getNextNotIgnoredPosition(position);
-                            if(highest_temperature < third.getTemperature()) {
-                                if (position < array_all.size()) {
-                                    fourth = array_all.get(position);
-                                    if(highest_temperature < fourth.getTemperature()) {
-//                                        Log.i(TAG, "h h h h: Fourth higher. Done.");
-                                        array_yellow.clear();
-                                        array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                                        array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                                        array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                                        array_yellow.add(new GraphRecord(third.getDay(), third.getTemperature()));
-                                        array_yellow.add(new GraphRecord(fourth.getDay(), fourth.getTemperature()));
-                                        array_guideline.clear();
-                                        array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-//                                        showToastMessage("Done. (h h h h)");
-                                        Log.i(TAG, "Done. (h h h h)");
-                                        return true;
-                                    }
-                                    else {
-//                                        Log.i(TAG, "h h h h: Fourth lower. Reset.");
-                                        array_yellow.clear();
-                                        array_guideline.clear();
-                                        return false;
-                                    }
-                                }
-                                else {
-//                                    Log.i(TAG, "h h h h: Third higher but no more data.");
-                                    array_yellow.clear();
-                                    array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                                    array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                                    array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                                    array_yellow.add(new GraphRecord(third.getDay(), third.getTemperature()));
-                                    array_guideline.clear();
-                                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                                    return true;
-                                }
-                            }
-                            else {
-//                                Log.i(TAG, "h h h h: Third lower. Reset.");
-                                array_yellow.clear();
-                                array_guideline.clear();
-                                return false;
-                            }
-                        }
-                        else {
-//                            Log.i(TAG, "h h h h: Second higher but no more data.");
-                            array_yellow.clear();
-                            array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                            array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                            array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                            array_guideline.clear();
-                            array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                            return true;
-                        }
-                    }
-                    else {
-//                        Log.i(TAG, "h h h h: Second lower. Reset.");
-                        array_yellow.clear();
-                        array_guideline.clear();
-                        return false;
-                    }
-                }
-                else {
-//                    Log.i(TAG, "h h h h: First higher but no more data.");
-                    array_yellow.clear();
-                    array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                    array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                    array_guideline.clear();
-                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                    return true;
-                }
-            }
-            else {
-//                Log.i(TAG, "h h h h: Blocked by itself.");
-                return true;
-            }
-        }
-        else {
-//            Log.i(TAG, "h h h h: Blocked by others.");
-            return false;
-        }
-    }
-
-    /**
-     * Analyses the temperature. Looks for hLHh.
-     *
-     * @param position                      Position in array at which first item was found. ( < 6 ) 
-     * @param highest_temperature           highest_temperature found for the first item.
-     * @param highest_temperature_found     True if any Analysis found a possible temperature
-     *                                      to complete analysis.
-     * @return                              True to block others if analysis did not fail yet or is complete.
-     *                                      False if failed to reset.
-     */
-    private boolean thirdAnalysis (int position, double highest_temperature, boolean[] highest_temperature_found) {
-        GraphRecord start;
-        GraphRecord first;
-        GraphRecord second;
-        GraphRecord third;
-        GraphRecord fourth;
-
-        // Only check if others did not find the first possible firstHighTemperaturePosition.
-        if (!highest_temperature_found[0] && !highest_temperature_found[1] && !highest_temperature_found[3]) {
-            start = array_all.get(position - 1);
-            first = array_all.get(position);
-            position = getNextNotIgnoredPosition(position);
-            // Only check if itself found the first possible firstHighTemperaturePosition.
-            if (!highest_temperature_found[2] || first == array_yellow.get(0)) {
-                if (position < array_all.size()) {
-                    second = array_all.get(position);
-                    position = getNextNotIgnoredPosition(position);
-                    if ((second.getTemperature() < highest_temperature)) {
-                        if (position < array_all.size()) {
-                            third = array_all.get(position);
-                            position = getNextNotIgnoredPosition(position);
-                            // Calculate 0.20 for accuracy with "(highest_temperature * 5 + 1) / 5". 36.00+0.20=36.00.2!
-                            if ((highest_temperature * 5 + 1) / 5 <= third.getTemperature()) {
-                                if (position < array_all.size()) {
-                                    fourth = array_all.get(position);
-                                    if (highest_temperature < fourth.getTemperature()) {
-//                                        Log.i(TAG, "h L H h: Fourth higher. Done.");
-                                        array_yellow.clear();
-                                        array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                                        array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                                        array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                                        array_yellow.add(new GraphRecord(third.getDay(), third.getTemperature()));
-                                        array_yellow.add(new GraphRecord(fourth.getDay(), fourth.getTemperature()));
-                                        array_guideline.clear();
-                                        array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-//                                        showToastMessage("Done. (h L H h)");
-                                        Log.i(TAG, "Done. (h L H h)");
-
-                                        return true;
-                                    }
-                                    else {
-//                                        Log.i(TAG, "h L H h: Fourth not higher. Reset.");
-                                        array_yellow.clear();
-                                        array_guideline.clear();
-                                        return false;
-                                    }
-                                }
-                                else {
-//                                    Log.i(TAG, "h L H h: Third at least 0.20 higher but no more data.");
-                                    array_yellow.clear();
-                                    array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                                    array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                                    array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                                    array_yellow.add(new GraphRecord(third.getDay(), third.getTemperature()));
-                                    array_guideline.clear();
-                                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                                    return true;
-                                }
-                            }
-                            else {
-//                                Log.i(TAG, "h L H h: Third not 0.20 higher. Reset.");
-                                array_yellow.clear();
-                                array_guideline.clear();
-                                return false;
-                            }
-                        }
-                        else {
-//                            Log.i(TAG, "h L H h: Second lower but no more data.");
-                            array_yellow.clear();
-                            array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                            array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                            array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                            array_guideline.clear();
-                            array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                            return true;
-                        }
-                    }
-                    else {
-//                        Log.i(TAG, "h L H h: Second higher. Reset.");
-                        array_yellow.clear();
-                        array_guideline.clear();
-                        return false;
-                    }
-                }
-                else {
-//                    Log.i(TAG, "h L H h: First higher but no more data.");
-                    array_yellow.clear();
-                    array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                    array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                    array_guideline.clear();
-                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                    return true;
-                }
-            }
-            else {
-//                Log.i(TAG, "h L H h: Blocked by itself.");
-                return true;
-            }
-        }
-        else {
-//            Log.i(TAG, "h L H h: Blocked by others.");
-            return false;
-        }
-    }
-
-    /**
-     * Analyses the temperature. Looks for hhLH.
-     *
-     * @param position                      Position in array at which first item was found. ( < 6 ) 
-     * @param highest_temperature           highest_temperature found for the first item.
-     * @param highest_temperature_found     True if any Analysis found a possible temperature
-     *                                      to complete analysis.
-     * @return                              True to block others if analysis did not fail yet or is complete.
-     *                                      False if failed to reset.
-     */
-    private boolean fourthAnalysis(int position, double highest_temperature, boolean[] highest_temperature_found) {
-        GraphRecord start;
-        GraphRecord first;
-        GraphRecord second;
-        GraphRecord third;
-        GraphRecord fourth;
-
-        // Only check if others did not find the first possible firstHighTemperaturePosition.
-        if (!highest_temperature_found[0] && !highest_temperature_found[1] && !highest_temperature_found[2]) {
-            start = array_all.get(position - 1);
-            first = array_all.get(position);
-            position = getNextNotIgnoredPosition(position);
-            // Only check if itself found the first possible firstHighTemperaturePosition.
-            if (!highest_temperature_found[3] || first == array_yellow.get(0)) {
-                if (position < array_all.size()) {
-                    second = array_all.get(position);
-                    position = getNextNotIgnoredPosition(position);
-                    if (highest_temperature < second.getTemperature()) {
-                        if (position < array_all.size()) {
-                            third = array_all.get(position);
-                            position = getNextNotIgnoredPosition(position);
-                            if (third.getTemperature() < highest_temperature) {
-                                if (position < array_all.size()) {
-                                    fourth = array_all.get(position);
-                                    if((highest_temperature * 5 + 1) / 5 <= fourth.getTemperature()) {
-//                                        Log.i(TAG, "h h L H: Fourth at least 0.20 higher. Done.");
-                                        array_yellow.clear();
-                                        array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                                        array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                                        array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                                        array_yellow.add(new GraphRecord(third.getDay(), third.getTemperature()));
-                                        array_yellow.add(new GraphRecord(fourth.getDay(), fourth.getTemperature()));
-                                        array_guideline.clear();
-                                        array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-//                                        showToastMessage("Done. (h h L H)");
-                                        Log.i(TAG, "Done. (h h L H)");
-                                        return true;
-                                    }
-                                    else {
-//                                        Log.i(TAG, "h h L H: Fourth not at least 0.20 higher. Reset.");
-                                        array_yellow.clear();
-                                        array_guideline.clear();
-                                        return false;
-                                    }
-                                }
-                                else {
-//                                    Log.i(TAG, "h h L H: Third lower but no more data.");
-                                    array_yellow.clear();
-                                    array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                                    array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                                    array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                                    array_yellow.add(new GraphRecord(third.getDay(), third.getTemperature()));
-                                    array_guideline.clear();
-                                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                                    return true;
-                                }
-                            }
-                            else {
-//                                Log.i(TAG, "h h L H: Third higher. Reset.");
-                                array_yellow.clear();
-                                array_guideline.clear();
-                                return false;
-                            }
-                        }
-                        else {
-//                            Log.i(TAG, "h h L H: Second higher but no more data.");
-                            array_yellow.clear();
-                            array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                            array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                            array_yellow.add(new GraphRecord(second.getDay(), second.getTemperature()));
-                            array_guideline.clear();
-                            array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                            return true;
-                        }
-                    }
-                    else {
-//                        Log.i(TAG, "h h L H: Second lower. Reset.");
-                        array_yellow.clear();
-                        array_guideline.clear();
-                        return false;
-                    }
-                }
-                else {
-//                    Log.i(TAG, "h h L H: First higher but no more data.");
-                    array_yellow.clear();
-                    array_yellow.add(new GraphRecord(start.getDay(), start.getTemperature()));
-                    array_yellow.add(new GraphRecord(first.getDay(), first.getTemperature()));
-                    array_guideline.clear();
-                    array_guideline.add(new GraphRecord(first.getDay(), highest_temperature));
-                    return true;
-                }
-            }
-            else {
-//                Log.i(TAG, "h h L H: Blocked by itself.");
-                return true;
-            }
-        }
-        else {
-//            Log.i(TAG, "h h L H: Blocked by others.");
-            return false;
-        }
-    }
-
-    /**
-     * Returns the next Position for a Record in the array_all for the Analysis
-     * that is not supposed to be ignored.
-     * If a non valid position (too high) is returned, the analysis stops.
-     *
-     * @param position                  Current Position.
-     * @return position                 Next not ignored Record Position
-     */
-    private int getNextNotIgnoredPosition(int position) {
-
-        position++;
-
-        // Increment and check.
-        while (position < array_all.size()) {
-            // Return if not ignored.
-            if (!array_all.get(position).isIgnored()) {
-                return position;
-            }
-            position++;
-        }
-
-        // Return non valid position for Analysis to stop.
-        return position;
 
     }
 
@@ -1876,6 +1597,8 @@ public class GraphActivity extends AppCompatActivity {
                     @Override
                     public void onClick(View view) {
 
+//                        tempTestData();
+
                         tempTestDatabase();
 
                         //Intent intent = SettingsActivity.makeIntent(GraphActivity.this);
@@ -2144,7 +1867,7 @@ public class GraphActivity extends AppCompatActivity {
 
     private void tempTestData() {
         Calendar cal = Calendar.getInstance();
-        cal.add(Calendar.DATE, -32);
+        cal.add(Calendar.DATE, -30);
 
         db_helper.deleteAllCycles();
 
@@ -2179,8 +1902,6 @@ public class GraphActivity extends AppCompatActivity {
         addRecord(29, 36.70);
 
         db_helper.updateCycleDate(1, cal.getTimeInMillis());
-
-
 
     }
 
